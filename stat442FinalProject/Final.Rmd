@@ -1,0 +1,279 @@
+---
+title: "Final Project STAT442"
+author: "Chaozhong Wang"
+date: "2025-04-13"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Option 1
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggrepel)  # For better label placement
+
+# Prepare data with correct quarterly dates
+trade_data <- read_csv("dataset_2025-04-13T02_01_49.813546073Z_DEFAULT_INTEGRATION_IMF.STA_IMTS_1.0.0.csv") %>%
+  separate(TIME_PERIOD, into = c("Year", "Quarter"), sep = "-Q", remove = FALSE) %>%
+  mutate(
+    Year = as.integer(Year),
+    Quarter = as.integer(Quarter),
+    Date = ymd(paste(Year, Quarter * 3 - 2, "01"))  # First day of quarter
+  )
+
+# Identify extreme countries (top/bottom 3 by average absolute trade balance)
+extreme_countries <- c("United States",
+                       "China, People's Republic of",
+                       "Germany",
+                       "India",
+                       "United Kingdom",
+                       "Vietnam"
+  
+)
+
+# Create labeled time series plot
+ggplot(trade_data %>% filter(COUNTRY %in% extreme_countries), 
+       aes(x = Date, y = OBS_VALUE/1e6, color = COUNTRY)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  theme_minimal() +
+    scale_y_continuous(labels = scales::comma) +
+  labs(title = "Trade Balance with Canada by Country (2021-2024)",
+       x = "Year",
+       y = "Trade Balance (Millions USD)",
+       color = "Country")
+```
+
+The line plot gives us an overview of the trade balance data over the past 4 years.
+
+Canada's trade relationships show striking imbalances, with the United States dominating deficits and China leading surpluses. 
+
+The data reveals two distinct tiers:
+
+Extreme volatility: US-China trade swings exceed $10B quarterly;
+
+Stable partners: Vietnam/Germany maintain consistent surpluses.
+
+
+
+
+\newpage
+
+## Option 2
+
+```{r geographical}
+# Load necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(maps)        # For world map data
+library(countrycode) # For country name standardization
+library(sf)          # For spatial data handling
+library(rnaturalearth) # For high-resolution world maps
+library(viridis)     # For color scales
+
+data = read_csv("dataset_2025-04-13T02_01_49.813546073Z_DEFAULT_INTEGRATION_IMF.STA_IMTS_1.0.0.csv")
+# Standardize country names to match map data
+data <- data %>%
+   mutate(COUNTRY = case_when(
+     COUNTRY == "China, People's Republic of" ~ "China",
+     COUNTRY == "Hong Kong Special Administrative Region, People's Republic of" ~ "Hong Kong",
+     COUNTRY == "Netherlands, The" ~ "Netherlands",
+     COUNTRY == "Egypt, Arab Republic of" ~ "Egypt",
+     TRUE ~ COUNTRY
+   ))
+
+# #add continent information
+# data <- data %>%
+#   mutate(continent = countrycode(COUNTRY, "country.name", "continent",
+#                               custom_match = c("Hong Kong" = "Asia")))
+
+# Get world map data
+world <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  filter(name != "Antarctica")
+
+#repare trade data for mapping (using average trade balance for each country)
+trade_summary <- data %>%
+  group_by(COUNTRY) %>%
+   summarize(avg_trade = mean(OBS_VALUE/1e6, na.rm = TRUE)) %>% ungroup()
+
+# Join trade data with map data
+world_trade <- world %>%
+  left_join(trade_summary, by = c("name_long" = "COUNTRY"))
+
+
+# Choropleth Map of Average Trade Balance
+ggplot(world_trade) +
+  geom_sf(aes(fill = avg_trade), color = "white", size = 0.2) +
+  scale_fill_gradient2(low = "yellow", mid = "green", high = "blue",
+                      midpoint = 0, 
+                      labels = scales::comma,
+                      name = "Avg Trade Balance\n(Millions USD)") +
+  labs(title = "Average Trade Balance with Canada for Selected Countries (2021-2024)",
+       subtitle = "Green = Trade Surplus with Canada | Yellow = Trade Deficit") +
+  theme_minimal() +
+  theme(legend.position = "right",
+        axis.text = element_blank(),
+        panel.grid = element_blank())
+
+
+```
+
+China has a trade surplus with Canada an average over 2021 - 2024.
+
+The United States has a trade deficit with Canada an average over 2021 - 2024.
+
+Most countries have a trade balance around 0 with Canada.
+
+
+
+
+\newpage
+
+## Option 3
+
+```{r categorical}
+#by continent
+
+library(tidyverse)
+library(ggplot2)
+library(countrycode)
+library(viridis)
+library(ggrepel) # For better label placement
+
+
+data <- data %>%
+    separate(TIME_PERIOD, into = c("Year", "Quarter"), sep = "-Q", remove = FALSE) %>%
+  mutate(
+    Year = as.integer(Year),
+    Quarter = as.integer(Quarter),
+    Date = ymd(paste(Year, Quarter * 3 - 2, "01"))  # First day of quarter
+  ) %>%
+  mutate(continent = countrycode(COUNTRY, "country.name", "continent",
+                               custom_match = c(
+                                 "Hong Kong" = "Asia",
+                                 "Kosovo" = "Europe",
+                                 "Taiwan" = "Asia"))) %>%
+  # Handle any remaining NA continents
+  mutate(continent = case_when(
+    COUNTRY == "European Union" ~ "Europe",
+    TRUE ~ continent
+  )) %>%
+  filter(!is.na(continent)) # Remove any countries without continent classification
+continent_palette <- c("#440154FF", "#433E85FF", "#2E6F8EFF", "#1F9A8AFF", "#4DC36BFF", "#BBDF27FF")
+# Stacked Area Chart of Continental Aggregates
+continent_totals <- data %>%
+  group_by(Date, continent) %>%
+  summarize(total_trade = sum(OBS_VALUE, na.rm = TRUE)/1000) %>%
+  mutate(continent = fct_reorder(continent, -total_trade, .fun = sum))
+
+ggplot(continent_totals, aes(x = Date, y = total_trade, fill = continent)) +
+  geom_area(alpha = 0.8) +
+  scale_fill_manual(values = continent_palette) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Aggregate Trade Balance with Canada by Continent",
+       subtitle = "Stacked area shows combined trade balance for all countries in each continent",
+       x = "Year",
+       y = "Total Trade Balance (Millions USD)",
+       fill = "Continent") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+
+Canada consistently runs trade deficits with its continental neighbors in the Americas, particularly with the United States and Mexico, as shown by negative trade balances. 
+
+Meanwhile, trade surpluses with Asian nations continue to grow, led by China and Vietnam, reflecting Asia's role as a manufacturing powerhouse and key exporter to the Canadian market.
+
+\newpage
+
+## Option 5
+
+```{r table}
+library(tidyverse)
+library(knitr)
+library(formattable)
+
+# Read and prepare data with volatility calculations
+volatility_data <- read_csv("CAtrading(countryperrow).csv") %>%
+  pivot_longer(
+    cols = `2021-Q1`:`2024-Q4`,
+    names_to = "Quarter",
+    values_to = "Trade_Balance"
+  ) %>%
+  group_by(COUNTRY, CONTINENT) %>%
+  summarise(
+    Avg_Balance = mean(Trade_Balance),
+    Volatility = sd(Trade_Balance),
+    Min_Balance = min(Trade_Balance),
+    Max_Balance = max(Trade_Balance),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Volatility_Level = case_when(
+      Volatility > 1500 ~ "Extreme",
+      Volatility > 500 ~ "High",
+      Volatility > 100 ~ "Moderate",
+      TRUE ~ "Low"
+    ),
+    Balance_Type = ifelse(Avg_Balance >= 0, "Surplus", "Deficit")
+  ) %>%
+  arrange(desc(Volatility)) 
+colnames(volatility_data) <- c(
+  "COUNTRY",
+  "CONTINENT",
+  "Avg Balance",
+  "Volatility",
+  "Min Balance",
+  "Max Balance",
+  "Volatility Level",
+  "Balance Type"
+)
+# Create conditional formatting table
+formattable(volatility_data, list(
+  `COUNTRY` = formatter("span", style = ~ style(color = "grey", font.weight = "bold")),
+  `Volatility` = color_tile("white", "red"),
+  `Avg Balance` = formatter("span",
+    style = x ~ style(
+      color = ifelse(x >= 0, "green", "red"),
+      font.weight = ifelse(abs(x) > 1000, "bold", "normal")
+    ),
+    x ~ accounting(x, digits = 0)
+  ),
+  `Volatility Level` = formatter("span",
+    style = x ~ style(
+      display = "block",
+      padding = "0 4px",
+      "border-radius" = "4px",
+      "background-color" = case_when(
+        x == "Extreme" ~ "#FF0000",
+        x == "High" ~ "#FF6B6B",
+        x == "Moderate" ~ "#FFD166",
+        TRUE ~ "#CCE5FF"
+      )
+    )
+  ),
+  `Balance Type` = formatter("span",
+    style = x ~ style(
+      display = "block",
+      padding = "0 4px",
+      "border-radius" = "4px",
+      "background-color" = ifelse(x == "Surplus", "#C7F5C7", "#FFC7C7")
+    ))),
+  caption = "Trade Balance Volatility with Canada (2021-2024), unit in Million")
+```
+
+Countries are sorted by volatility, the amount of change.
+U.S. has the most volatility, followed by China.
+
+
+
+
+
+
