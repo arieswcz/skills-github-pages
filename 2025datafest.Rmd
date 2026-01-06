@@ -1,0 +1,228 @@
+---
+title: "2025datafest"
+author: "Chaozhong Wang"
+date: "2025-05-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## overview
+
+2018-2024
+
+
+```{r }
+library(readr)
+library(dplyr)
+Leases <- read_csv("D:/2025datafest/2025 ASA DataFest-update2-2025-03-19/Leases.csv")
+
+# filter(Leases$market=="Atlanta")
+# summary(Leases$internal_industry)
+nrow(Leases[Leases$internal_industry=="Technology, Advertising, Media, and Information
+",])#168284
+
+nrow(Leases[Leases$internal_industry=="Financial Services and Insurance",]) #172537
+
+
+nrow(Leases[Leases$internal_industry=="Construction, Engineering and Architecture
+",]) #168284
+
+nrow(Leases[Leases$internal_industry=="Legal Services",]) #170393
+
+# Leases %>%
+#   group_by(internal_industry) %>%
+#   sum(Leases$leasedSF)
+
+industry_list <- unique(Leases$internal_industry)
+market_list <- unique(Leases$market)
+
+summary(Leases$leasedSF)
+
+BigLeases <- subset(Leases, leasedSF >= 10000) 
+
+FrequencyTimeSeries <- function(data) {   
+  time <- ts(numeric(84), frequency=12, start=c(2018, 1))  
+  for (i in 1:nrow(data)) {     
+    seriesval <-(as.numeric(data[i,1])-2018)*12 + as.numeric(data[i, 3])     
+    time[seriesval] <- time[seriesval]+1 }  
+  return (time) }
+
+#a line plot of big leases Time Series
+BigLeasesTime <- FrequencyTimeSeries(subset(Leases,leasedSF >= 10000))
+plot(BigLeasesTime)
+
+AreaTimeSeries <- function(data) {   
+  time <- ts(numeric(84), frequency=12, start=c(2018, 1))   
+  for (i in 1:nrow(data)) {     
+    seriesval <- (as.numeric(data[i,1])-2018)*12 + as.numeric(data[i, 3])     
+    time[seriesval] <- time[seriesval]+data[i,14]/100000 }  
+  return (time) }
+#a line plot of Atlanta Area Time Series
+plot(AreaTimeSeries(BigLeases))
+
+
+# line plots of all 29 areas Time Series
+for (area in market_list) {
+  plot(FrequencyTimeSeries(subset(BigLeases, market == area)), 
+       main= "Leases of area over 10000", sub=area, ylab="Frequency")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+Leases$overall_rent %>% group_by(year,quater)
+
+rent <- Leases[c("year","quarter","monthsigned","market","overall_rent")]
+rent <- rent[!duplicated(rent), ]
+
+quarter_rent <- aggregate(rent$overall_rent, list(rent$year,rent$quarter,rent$market), FUN=mean)
+colnames(quarter_rent) = c("year","quarter","market", "overall_rent")
+quarter_rent <- na.omit(quarter_rent)
+unique(quarter_rent$market)
+
+quarter_rent <- quarter_rent %>%
+  mutate(date = as.Date(paste(year, 
+                             match(quarter, c("Q1", "Q2", "Q3", "Q4")) * 3 - 2, 
+                             "01"), 
+                       format = "%Y %m %d")) %>%
+  filter(market %in% c("Manhattan","San Francisco",
+                       "Los Angeles","Atlanta", "Detroit","Austin",
+                       "Salt Lake City"))
+
+
+# Line plot showing rent trends over time
+
+  ggplot(quarter_rent, aes(x = date, y = overall_rent, color = market)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Atlanta" = "orange", "San Francisco" = "blue",
+                                "Manhattan" = "lightblue",
+                                "Los Angeles" = "#FF62BC88", 
+                                "Detroit"="#00BF7D88","Austin"="#E73BF388",
+                       "Salt Lake City"="#A3A50088")) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(title = "Quarterly Rent Trends (2018-2024)",
+       x = "Year",
+       y = "Overall Rent ($/SF)",
+       color = "Market") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 14),
+        legend.position = "bottom",
+        legend.title = element_text(size=14), 
+        legend.text = element_text(size=14)) + 
+    geom_vline(xintercept = 2020-03-11, color="red", size=5)
+
+ggsave("rent_trend.png")
+
+#Plot for rent
+
+rent_Atlanta <- subset(rent, rent$market =="Atlanta")
+quarterrentAtlanta <- aggregate(rent_Atlanta$overall_rent, list(rent_Atlanta$year,rent_Atlanta$quarter), FUN=mean) 
+
+colnames(quarterrentAtlanta)=c("year","quarter","overall_rent")
+
+
+quarterrentAtlanta <- quarterrentAtlanta %>%
+  mutate(date = as.Date(paste(year, 
+                             match(quarter, c("Q1", "Q2", "Q3", "Q4")) * 3 - 2, 
+                             "01"), 
+                       format = "%Y %m %d")) 
+ 
+Atlanta <- ggplot(quarterrentAtlanta, aes(y = overall_rent, x = date)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  labs(title = "Atlanta Rent")+
+  theme_minimal()
+
+Atlanta
+
+
+multiplot(Atlanta, SF, cols=2)
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+library(ggplot2)
+SF <- subset(quarter_rent, rent$market == "San Francisco")
+
+ggplot(SF, aes(y = overall_rent, x = date)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  labs(title = "San Francisco Rent")+
+  theme_minimal()
+
+NY <- subset(quarter_rent, rent$market == "Manhattan")
+
+ggplot(SF, aes(y = overall_rent, x = date)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  labs(title = "Manhattan Rent")+
+  theme_minimal()
+```
+```{r us map}
+library(ggplot2)
+library(maps)
+library(ggrepel) # For better label placement
+
+# Create a data frame with the cities and their coordinates
+cities <- data.frame(
+  city = c("Manhattan", "San Francisco", "Los Angeles", 
+           "Atlanta", "Detroit", "Austin", "Salt Lake City"),
+  lat = c(40.7831, 37.7749, 34.0522, 
+          33.7490, 42.3314, 30.2672, 40.7608),
+  lon = c(-73.9712, -122.4194, -118.2437, 
+          -84.3880, -83.0458, -97.7431, -111.8910)
+)
+
+# Get US map data
+us_map <- map_data("state")
+
+# Plot the map with highlighted cities
+ggplot() +
+  # Draw the US map
+  geom_polygon(data = us_map, 
+               aes(x = long, y = lat, group = group),
+               fill = "lightgray", color = "white") +
+  
+  # Add city points
+  geom_point(data = cities, 
+             aes(x = lon, y = lat), 
+             color = "red", size = 3) +
+  
+  # Add city labels with repelling to avoid overlap
+  geom_label_repel(data = cities, 
+                  aes(x = lon, y = lat, label = city),
+                  box.padding = 0.5, point.padding = 0.5,
+                  segment.color = 'grey50') +
+  
+  # Adjust the coordinate system
+  coord_map(xlim = c(-125, -65), ylim = c(25, 50)) +
+  
+  # Add titles and theme
+  #labs(title = "Selected US Cities Highlighted on Map",
+  #     caption = "Red dots indicate city locations") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+        plot.caption = element_text(hjust = 0.5, size = 10))
+
+
+```
